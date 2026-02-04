@@ -25,6 +25,8 @@ extern "C"
   {
     CAP_OK = 0,
     CAP_E_INVALID = -1,
+    CAP_E_DEVICE_NOT_FOUND = -2,
+    CAP_E_OPEN_DEVICE = -3,
     CAP_E_INTERNAL = -100
   } cap_result_t;
 

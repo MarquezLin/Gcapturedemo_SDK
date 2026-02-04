@@ -26,7 +26,6 @@ HEADERS += \
 SOURCES += \
     src/capture_sdk.cpp \
     src/internal/video_card.cpp \
-    src/internal/task.cpp \
     src/internal/common/utils.cpp
 
 LIBS += -lSetupAPI

@@ -580,8 +580,15 @@ int VideoCard::openDevices()
     c2h0_device_ = CreateFile(device_path_w, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (c2h0_device_ == INVALID_HANDLE_VALUE)
     {
-        fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
-        //
+        // fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
+        DWORD err = GetLastError();
+        printf("Error opening device, win32 error code: %lu\n", err);
+        if (err == ERROR_FILE_NOT_FOUND)
+        {
+            return -2; // device not found
+        }
+        return -1; // other open error
+                   //
     }
     memset(device_path, 0, sizeof(device_path));
     strcpy_s(device_path, sizeof device_path, device_base_path);
@@ -594,6 +601,8 @@ int VideoCard::openDevices()
     if (h2c0_device_ == INVALID_HANDLE_VALUE)
     {
         fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
+        printf("Invalid handle, skip IO.\n");
+        return -1;
         //
     }
     memset(device_path, 0, sizeof(device_path));
@@ -607,6 +616,8 @@ int VideoCard::openDevices()
     if (user_device_ == INVALID_HANDLE_VALUE)
     {
         fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
+        printf("Invalid handle, skip IO.\n");
+        return -1;
         //
     }
     memset(device_path, 0, sizeof(device_path));
@@ -620,6 +631,8 @@ int VideoCard::openDevices()
     if (event0_device_ == INVALID_HANDLE_VALUE)
     {
         fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
+        printf("Invalid handle, skip IO.\n");
+        return -1;
         //
     }
     memset(device_path, 0, sizeof(device_path));
@@ -633,6 +646,8 @@ int VideoCard::openDevices()
     if (event1_device_ == INVALID_HANDLE_VALUE)
     {
         fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
+        printf("Invalid handle, skip IO.\n");
+        return -1;
         //
     }
     return 0;

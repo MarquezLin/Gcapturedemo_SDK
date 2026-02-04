@@ -34,7 +34,12 @@ cap_result_t cap_init(cap_handle_t h, int width, int height)
         return CAP_E_INVALID;
     auto *ctx = (CapCtx *)h;
     int r = ctx->card.init(width, height);
-    return (r == 0) ? CAP_OK : CAP_E_INTERNAL;
+    // return (r == 0) ? CAP_OK : CAP_E_INTERNAL;
+    if (r == 0)
+        return CAP_OK;
+    if (r == -2)
+        return CAP_E_DEVICE_NOT_FOUND;
+    return CAP_E_OPEN_DEVICE;
 }
 
 cap_result_t cap_uninit(cap_handle_t h)
