@@ -109,24 +109,32 @@ void VideoCard::uninit()
     //    closeDevices();
 }
 
-int VideoCard::startCapture(const std::function<void(uchar *, int, int)> &cb)
+int VideoCard::startCapture(CaptureMode mode, const std::function<void(uchar *, int, int)> &cb)
 {
     if (!is_initialized_)
-    {
         return -1;
+
+    recv_data_cb_ = std::make_shared<
+        std::function<void(uchar *, int, int)>>(cb);
+
+    if (mode == CaptureMode::Single)
+    {
+        return captureSingleShot();
     }
 
+    // ==========
     if (capturing_)
-    {
         return 0;
-    }
+
     stop_c2h_ = false;
     c2h_fpga_ddr_addr_index_ = 0;
-    recv_data_cb_ = std::make_shared<std::function<void(uchar *, int, int)>>(cb);
 
     c2h_sem_ = std::make_shared<Semaphore>();
-    c2h_event_thread_ = std::make_shared<std::thread>(std::bind(&VideoCard::c2hEventThread, this));
-    c2h_data_thread_ = std::make_shared<std::thread>(std::bind(&VideoCard::c2hDataThread, this));
+    c2h_event_thread_ =
+        std::make_shared<std::thread>(&VideoCard::c2hEventThread, this);
+    c2h_data_thread_ =
+        std::make_shared<std::thread>(&VideoCard::c2hDataThread, this);
+
     return 0;
 }
 
@@ -668,4 +676,35 @@ void VideoCard::closeDevices()
     CloseHandle(user_device_);
     CloseHandle(h2c0_device_);
     CloseHandle(c2h0_device_);
+}
+
+int VideoCard::captureSingleShot()
+{
+    stop_c2h_ = false;
+    c2h_fpga_ddr_addr_index_ = 0;
+
+    // 等一次 event（等 interrupt）
+    BYTE val;
+    if (readDevice(event1_device_, 0, 1, (BYTE *)&val) < 0)
+        return -1;
+
+    // clear status
+    writeUser(S2MM_VDMA_BASE + VDMA_S2MM_SR, 0xffffffff);
+
+    printf("start read dma (single)\n");
+
+    auto ret = readDevice(
+        c2h0_device_,
+        c2h_fpga_ddr_addr_[0],
+        image_bytes_count_,
+        c2h_align_mem_);
+    if (ret < 0)
+        return -1;
+
+    if (recv_data_cb_)
+    {
+        (*recv_data_cb_)(c2h_align_mem_, video_width_, video_height_);
+    }
+
+    return 0;
 }

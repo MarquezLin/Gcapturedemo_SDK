@@ -51,13 +51,16 @@ cap_result_t cap_uninit(cap_handle_t h)
     return CAP_OK;
 }
 
-cap_result_t cap_start_capture(cap_handle_t h, cap_video_cb_t cb, void *user)
+cap_result_t cap_start_capture(cap_handle_t h, cap_mode_t mode, cap_video_cb_t cb, void *user)
 {
     if (!h || !cb)
         return CAP_E_INVALID;
     auto *ctx = (CapCtx *)h;
 
-    int r = ctx->card.startCapture([=](uchar *data, int w, int hh)
+    int r = ctx->card.startCapture((mode == CAP_MODE_SINGLE)
+                                       ? CaptureMode::Single
+                                       : CaptureMode::Continuous,
+                                   [=](uchar *data, int w, int hh)
                                    {
         // 你原本註解是 1920*1080*3，先假設 3 bytes per pixel
         cb((const uint8_t*)data, w, hh, 3, user); });
