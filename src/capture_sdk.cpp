@@ -9,6 +9,16 @@ struct CapCtx
     std::mutex out_mtx;
 };
 
+static void dbgprintf(const char* fmt, ...)
+{
+    char buf[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    OutputDebugStringA(buf);
+}
+
 cap_result_t cap_create(cap_handle_t *out)
 {
     if (!out)
@@ -56,6 +66,9 @@ cap_result_t cap_start_capture(cap_handle_t h, cap_mode_t mode, cap_video_cb_t c
     if (!h || !cb)
         return CAP_E_INVALID;
     auto *ctx = (CapCtx *)h;
+    dbgprintf("[cap] mode=%d, h=%p, cb=%p\n", mode, h, cb);
+    printf("[cap] mode=%d, h=%p, cb=%p\n", mode, h, cb);
+
 
     int r = ctx->card.startCapture((mode == CAP_MODE_SINGLE)
                                        ? CaptureMode::Single
@@ -65,6 +78,7 @@ cap_result_t cap_start_capture(cap_handle_t h, cap_mode_t mode, cap_video_cb_t c
         // 你原本註解是 1920*1080*3，先假設 3 bytes per pixel
         cb((const uint8_t*)data, w, hh, 3, user); });
 
+    printf("[cap] mode=%d, h=%p, cb=%p\n", mode, h, cb);
     return (r == 0) ? CAP_OK : CAP_E_INTERNAL;
 }
 

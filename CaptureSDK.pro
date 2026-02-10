@@ -1,5 +1,6 @@
 QT -= gui widgets
-QT += core
+QT += core \
+    widgets
 
 TEMPLATE = lib
 CONFIG += dll c++11

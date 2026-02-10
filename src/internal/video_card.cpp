@@ -93,6 +93,7 @@ int VideoCard::init(int w, int h)
 
     vtc_stream_run(1, 1);
     is_initialized_ = true;
+    printf("init\n");
     return 0;
 }
 
@@ -102,23 +103,27 @@ void VideoCard::uninit()
     {
         return;
     }
-    closeDevices();
     stopCapture();
     stopOutVideo();
+    closeDevices();
+
     is_initialized_ = false;
     //    closeDevices();
 }
 
 int VideoCard::startCapture(CaptureMode mode, const std::function<void(uchar *, int, int)> &cb)
 {
+    printf("test1\n");
     if (!is_initialized_)
         return -1;
+    printf("test2\n");
 
     recv_data_cb_ = std::make_shared<
         std::function<void(uchar *, int, int)>>(cb);
-
+    printf("test3\n");
     if (mode == CaptureMode::Single)
     {
+        printf("start read dma (single)\n");
         return captureSingleShot();
     }
 
