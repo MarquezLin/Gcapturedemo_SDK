@@ -40,6 +40,13 @@ public:
         const std::function<void(uchar *, int, int)> &cb);
 
     /*
+     * @fun：连续采集模式下，抓取下一帧（阻塞直到event到来）。
+     *        该函数不会创建线程，调用者可自行决定是否在上层建立线程循环调用。
+     * @return 0：成功，非0：失败
+     */
+    int captureStep();
+
+    /*
      * @fun：停止采集
      */
     void stopCapture();
@@ -49,6 +56,12 @@ public:
      * @param：当设备准备好时，调用外部回调
      */
     int startOutVideo(const std::function<void()> &ready_cb);
+
+    /*
+     * @fun：输出模式下，等待板卡ready事件（阻塞），并触发ready_cb。
+     *        该函数不会创建线程，调用者可在上层自行循环pump。
+     */
+    int outputStep();
 
     /*
      * @fun：停止输出视频

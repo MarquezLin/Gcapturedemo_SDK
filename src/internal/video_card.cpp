@@ -157,37 +157,61 @@ int VideoCard::startCapture(CaptureMode mode, const std::function<void(uchar *, 
     stop_c2h_ = false;
     c2h_fpga_ddr_addr_index_ = 0;
 
-    c2h_sem_ = std::make_shared<Semaphore>();
-    c2h_event_thread_ =
-        std::make_shared<std::thread>(&VideoCard::c2hEventThread, this);
-    c2h_data_thread_ =
-        std::make_shared<std::thread>(&VideoCard::c2hDataThread, this);
+    return 0;
+}
+
+
+
+int VideoCard::captureStep()
+{
+    if (!is_initialized_)
+        return -1;
+
+    if (!capturing_ || stop_c2h_)
+        return -1;
+
+    // 等待板卡event1（表示有新的一帧写入DDR）
+    BYTE val = 0;
+    if (readDevice(event1_device_, 0, 1, (BYTE *)&val) < 0)
+    {
+        return -1;
+    }
+
+    // 清除VDMA S2MM状态
+    writeUser(S2MM_VDMA_BASE + VDMA_S2MM_SR, 0xffffffff);
+
+    // 读取一帧视频数据
+    auto addr = c2h_fpga_ddr_addr_[c2h_fpga_ddr_addr_index_ % VIDEO_FRAME_STORE_NUM];
+    auto ret = readDevice(c2h0_device_, addr, image_bytes_count_, c2h_align_mem_);
+    if (ret < 0)
+    {
+        return -1;
+    }
+
+    c2h_fpga_ddr_addr_index_++;
+
+    if (recv_data_cb_)
+    {
+        // 回调在“调用者线程”执行（不会由DLL内部线程触发）
+        (*recv_data_cb_)(c2h_align_mem_, video_width_, video_height_);
+    }
 
     return 0;
 }
 
+
 void VideoCard::stopCapture()
 {
+    // DLL内部不创建线程，因此停止时仅修改状态即可
     stop_c2h_ = true;
-    if (c2h_sem_)
-    {
-        c2h_sem_->signal();
-    }
+    capturing_ = false;
 
-    if (c2h_event_thread_)
-    {
-        c2h_event_thread_->join();
-        c2h_event_thread_.reset();
-        c2h_event_thread_ = nullptr;
-    }
-
-    if (c2h_data_thread_)
-    {
-        c2h_data_thread_->join();
-        c2h_data_thread_.reset();
-        c2h_data_thread_ = nullptr;
-    }
+    // 兼容旧字段：若外部仍使用这些对象，则释放
+    c2h_sem_.reset();
+    c2h_event_thread_.reset();
+    c2h_data_thread_.reset();
 }
+
 
 void VideoCard::c2hEventThread()
 {
@@ -198,15 +222,11 @@ void VideoCard::c2hEventThread()
             break;
         }
         BYTE val;
-        uint64_t t, t_old;
         if (readDevice(event1_device_, 0, 1, (BYTE *)&val) < 0)
         {
             break;
         }
         //        qDebug() << "get a event";
-        t = now_us();
-        printf("[EVENT ] %llu us- get a event (cost=%llu us)\n", t, t - t_old);
-        t_old = t;
         writeUser(S2MM_VDMA_BASE + VDMA_S2MM_SR, 0xffffffff);
         if (c2h_sem_)
         {
@@ -257,34 +277,57 @@ int VideoCard::startOutVideo(const std::function<void()> &ready_cb)
         return 0;
     }
 
+    // 输出模式：不在DLL内部创建任何线程
     stop_h2c_ = false;
-    output_ready_cb_ = std::make_shared<std::function<void()>>(ready_cb);
-    write_worker_ = std::make_shared<Worker>();
-    write_worker_->start();
-
-    h2c_event_thread_ = std::make_shared<std::thread>(std::bind(&VideoCard::h2cEventThread, this));
     outputing_ = true;
+    h2c_fpga_ddr_addr_index_ = 0;
+
+    output_ready_cb_ = std::make_shared<std::function<void()>>(ready_cb);
+
     return 0;
 }
 
-void VideoCard::stopOutVideo()
+
+
+int VideoCard::outputStep()
 {
-    stop_h2c_ = true;
-    if (h2c_event_thread_)
+    if (!is_initialized_)
+        return -1;
+
+    if (!outputing_ || stop_h2c_)
+        return -1;
+
+    // 等待板卡event0（表示MM2S可继续/空闲）
+    BYTE val = 0;
+    if (readDevice(event0_device_, 0, 1, (BYTE *)&val) < 0)
     {
-        h2c_event_thread_->join();
-        h2c_event_thread_.reset();
-        h2c_event_thread_ = nullptr;
+        return -1;
     }
 
-    if (write_worker_)
+    // 清除VDMA MM2S状态
+    writeUser(MM2S_VDMA_BASE + VDMA_MM2S_SR, 0xffffffff);
+
+    if (output_ready_cb_)
     {
-        write_worker_->stop();
-        write_worker_.reset();
-        write_worker_ = nullptr;
+        // 回调在“调用者线程”执行
+        (*output_ready_cb_)();
     }
-    outputing_ = false;
+
+    return 0;
 }
+
+
+void VideoCard::stopOutVideo()
+{
+    // DLL内部不创建线程，因此停止时仅修改状态即可
+    stop_h2c_ = true;
+    outputing_ = false;
+
+    // 兼容旧字段：释放对象
+    h2c_event_thread_.reset();
+    write_worker_.reset();
+}
+
 
 void VideoCard::h2cEventThread()
 {

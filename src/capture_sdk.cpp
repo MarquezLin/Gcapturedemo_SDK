@@ -81,6 +81,17 @@ cap_result_t cap_start_capture(cap_handle_t h, cap_mode_t mode, cap_video_cb_t c
     return (r == 0) ? CAP_OK : CAP_E_INTERNAL;
 }
 
+
+cap_result_t cap_capture_step(cap_handle_t h)
+{
+    if (!h)
+        return CAP_E_INVALID;
+    auto *ctx = (CapCtx *)h;
+
+    int r = ctx->card.captureStep();
+    return (r == 0) ? CAP_OK : CAP_E_INTERNAL;
+}
+
 cap_result_t cap_stop_capture(cap_handle_t h)
 {
     if (!h)
