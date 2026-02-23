@@ -5,6 +5,8 @@
 #include <string.h>
 #include <Initguid.h>
 #include "common/utils.h"
+#include <stdint.h>
+#include <stdio.h>
 
 #pragma comment(lib, "SetupAPI.lib")
 
@@ -54,6 +56,25 @@ static const int DEFAULT_VIDEO_HEIGHT = 1080;
 #define EVENT0_NAME "event_0"
 #define EVENT1_NAME "event_1"
 
+static LARGE_INTEGER g_freq;
+static BOOL g_timeInit = FALSE;
+
+static void init_time()
+{
+    if (!g_timeInit)
+    {
+        QueryPerformanceFrequency(&g_freq);
+        g_timeInit = TRUE;
+    }
+}
+
+static uint64_t now_us()
+{
+    LARGE_INTEGER counter;
+    QueryPerformanceCounter(&counter);
+    return (uint64_t)(counter.QuadPart * 1000000ULL / g_freq.QuadPart);
+}
+
 VideoCard::VideoCard()
 {
     video_width_ = DEFAULT_VIDEO_WIDTH;
@@ -93,7 +114,9 @@ int VideoCard::init(int w, int h)
 
     vtc_stream_run(1, 1);
     is_initialized_ = true;
-    printf("init\n");
+    init_time();
+    uint64_t t = now_us();
+    printf("[INIT  ] %llu us  Init done\n", t);
     return 0;
 }
 
@@ -175,11 +198,15 @@ void VideoCard::c2hEventThread()
             break;
         }
         BYTE val;
+        uint64_t t, t_old;
         if (readDevice(event1_device_, 0, 1, (BYTE *)&val) < 0)
         {
             break;
         }
         //        qDebug() << "get a event";
+        t = now_us();
+        printf("[EVENT ] %llu us- get a event (cost=%llu us)\n", t, t - t_old);
+        t_old = t;
         writeUser(S2MM_VDMA_BASE + VDMA_S2MM_SR, 0xffffffff);
         if (c2h_sem_)
         {
@@ -199,12 +226,15 @@ void VideoCard::c2hDataThread()
         }
         // 读取视频数据
         //  qDebug() << "start read dma";
-        printf("start read dma\n");
+        uint64_t t = now_us();
+        printf("[DATA  ] %llu us  start read dma\n", t);
         auto ret = readDevice(c2h0_device_, c2h_fpga_ddr_addr_[c2h_fpga_ddr_addr_index_ % VIDEO_FRAME_STORE_NUM], image_bytes_count_, c2h_align_mem_);
         if (ret < 0)
         {
             break;
         }
+        uint64_t t2 = now_us();
+        printf("[DATA  ] %llu us  read dma done  (cost=%llu us)\n", t2, t2 - t);
         //        qDebug() << "read dma done";
         // 调用注册回调
         if (recv_data_cb_)
