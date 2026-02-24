@@ -136,29 +136,29 @@ void VideoCard::uninit()
 
 int VideoCard::startCapture(CaptureMode mode, const std::function<void(uchar *, int, int)> &cb)
 {
-    printf("test1\n");
     if (!is_initialized_)
         return -1;
-    printf("test2\n");
 
-    recv_data_cb_ = std::make_shared<
-        std::function<void(uchar *, int, int)>>(cb);
-    printf("test3\n");
+    recv_data_cb_ = std::make_shared<std::function<void(uchar *, int, int)>>(cb);
+
+    // Single frame capture: Directly blocks and reads one frame.
     if (mode == CaptureMode::Single)
     {
         printf("start read dma (single)\n");
         return captureSingleShot();
     }
 
-    // ==========
+    // Continuous mode: Only enters the capturing state, without creating any threads inside the DLL.
     if (capturing_)
         return 0;
 
     stop_c2h_ = false;
+    capturing_ = true;
     c2h_fpga_ddr_addr_index_ = 0;
 
     return 0;
 }
+
 
 
 
@@ -170,17 +170,17 @@ int VideoCard::captureStep()
     if (!capturing_ || stop_c2h_)
         return -1;
 
-    // 等待板卡event1（表示有新的一帧写入DDR）
+    // Waiting for board event1(indicating a new frame has been written to DDR)
     BYTE val = 0;
     if (readDevice(event1_device_, 0, 1, (BYTE *)&val) < 0)
     {
         return -1;
     }
 
-    // 清除VDMA S2MM状态
+    // Clear VDMA S2MM state
     writeUser(S2MM_VDMA_BASE + VDMA_S2MM_SR, 0xffffffff);
 
-    // 读取一帧视频数据
+    // Read a frame of video data
     auto addr = c2h_fpga_ddr_addr_[c2h_fpga_ddr_addr_index_ % VIDEO_FRAME_STORE_NUM];
     auto ret = readDevice(c2h0_device_, addr, image_bytes_count_, c2h_align_mem_);
     if (ret < 0)
@@ -192,7 +192,7 @@ int VideoCard::captureStep()
 
     if (recv_data_cb_)
     {
-        // 回调在“调用者线程”执行（不会由DLL内部线程触发）
+        // The callback executes on the caller thread (it is not triggered by a thread inside the DLL).
         (*recv_data_cb_)(c2h_align_mem_, video_width_, video_height_);
     }
 
@@ -202,11 +202,10 @@ int VideoCard::captureStep()
 
 void VideoCard::stopCapture()
 {
-    // DLL内部不创建线程，因此停止时仅修改状态即可
+    // The DLL does not create threads internally, so stoppint it only requires modifying its state.
     stop_c2h_ = true;
     capturing_ = false;
 
-    // 兼容旧字段：若外部仍使用这些对象，则释放
     c2h_sem_.reset();
     c2h_event_thread_.reset();
     c2h_data_thread_.reset();
