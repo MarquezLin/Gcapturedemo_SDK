@@ -5,6 +5,7 @@
 // #define CAPTURESDK_DEBUG
 
 #include "capture_sdk_log.h"
+#define CAPTURESDK_DEBUG
 
 #ifdef CAPTURESDK_DEBUG
   #include <chrono>

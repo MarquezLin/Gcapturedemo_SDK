@@ -1,14 +1,18 @@
 #include "cap_log_internal.h"
 
+#include <atomic>
+
 #ifdef CAPTURESDK_DEBUG
   #include <cstring>
 #endif
 
-static cap_log_callback_t g_log_cb = nullptr;
+// NOTE: log callback may be set/cleared from another thread.
+// Using atomic prevents data races when logging from capture/pump threads.
+static std::atomic<cap_log_callback_t> g_log_cb{nullptr};
 
 extern "C" void cap_set_log_callback(cap_log_callback_t cb)
 {
-    g_log_cb = cb;
+    g_log_cb.store(cb, std::memory_order_release);
 }
 
 #ifdef CAPTURESDK_DEBUG
@@ -42,10 +46,17 @@ void cap_internal_log(cap_log_level_t level, const char* fmt, ...)
              level_str(level),
              buffer);
 
-    std::fprintf(stderr, "%s\n", final_msg);
-
-    if (g_log_cb)
-        g_log_cb(level, final_msg);
+    // If the app registers a callback, prefer callback-only to avoid duplicated logs
+    // (stderr + app logger) and to keep capture threads fast.
+    auto cb = g_log_cb.load(std::memory_order_acquire);
+    if (cb)
+    {
+        cb(level, final_msg);
+    }
+    else
+    {
+        std::fprintf(stderr, "%s\n", final_msg);
+    }
 }
 
 #endif

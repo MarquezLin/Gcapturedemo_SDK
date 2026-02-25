@@ -14,6 +14,60 @@
 DEFINE_GUID(GUID_DEVINTERFACE_XDMA,
             0x74c7e4a9, 0x6d5d, 0x4a70, 0xbc, 0x0d, 0x20, 0x69, 0x1d, 0xff, 0x9e, 0x9d);
 
+// Read an XDMA event device with optional timeout.
+// timeout_ms < 0  => wait forever
+// timeout_ms == 0 => non-blocking poll
+// return: 0 success, 1 timeout, -1 error
+static int read_event_overlapped(HANDLE h, BYTE *buf, DWORD size, int timeout_ms)
+{
+    if (h == INVALID_HANDLE_VALUE || !buf || size == 0)
+        return -1;
+
+    OVERLAPPED ov;
+    ZeroMemory(&ov, sizeof(ov));
+    ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (!ov.hEvent)
+        return -1;
+
+    DWORD rd = 0;
+    BOOL ok = ReadFile(h, buf, size, &rd, &ov);
+    if (!ok)
+    {
+        const DWORD err = GetLastError();
+        if (err != ERROR_IO_PENDING)
+        {
+            CloseHandle(ov.hEvent);
+            return -1;
+        }
+
+        const DWORD wait_ms = (timeout_ms < 0) ? INFINITE : (DWORD)timeout_ms;
+        const DWORD w = WaitForSingleObject(ov.hEvent, wait_ms);
+        if (w == WAIT_TIMEOUT)
+        {
+            // Cancel pending I/O so caller can stop cleanly.
+            CancelIoEx(h, &ov);
+            // Ensure completion to avoid leaking kernel resources.
+            GetOverlappedResult(h, &ov, &rd, TRUE);
+            CloseHandle(ov.hEvent);
+            return 1;
+        }
+        if (w != WAIT_OBJECT_0)
+        {
+            CancelIoEx(h, &ov);
+            GetOverlappedResult(h, &ov, &rd, TRUE);
+            CloseHandle(ov.hEvent);
+            return -1;
+        }
+
+        ok = GetOverlappedResult(h, &ov, &rd, FALSE);
+        CloseHandle(ov.hEvent);
+        return ok ? 0 : -1;
+    }
+
+    CloseHandle(ov.hEvent);
+    return 0;
+}
+
 static const int DEFAULT_VIDEO_WIDTH = 1920;
 static const int DEFAULT_VIDEO_HEIGHT = 1080;
 #define MAX_PATH 400
@@ -164,6 +218,12 @@ int VideoCard::startCapture(CaptureMode mode, const std::function<void(uchar *, 
 
 int VideoCard::captureStep()
 {
+    // Backward-compatible: block until a frame/event arrives.
+    return (captureStepTimeout(-1) == 0) ? 0 : -1;
+}
+
+int VideoCard::captureStepTimeout(int timeout_ms)
+{
     if (!is_initialized_)
         return -1;
 
@@ -172,10 +232,11 @@ int VideoCard::captureStep()
 
     // Waiting for board event1(indicating a new frame has been written to DDR)
     BYTE val = 0;
-    if (readDevice(event1_device_, 0, 1, (BYTE *)&val) < 0)
-    {
+    const int evr = read_event_overlapped(event1_device_, (BYTE *)&val, 1, timeout_ms);
+    if (evr == 1)
+        return 1; // timeout
+    if (evr < 0)
         return -1;
-    }
 
     // Clear VDMA S2MM state
     writeUser(S2MM_VDMA_BASE + VDMA_S2MM_SR, 0xffffffff);
@@ -221,7 +282,7 @@ void VideoCard::c2hEventThread()
             break;
         }
         BYTE val;
-        if (readDevice(event1_device_, 0, 1, (BYTE *)&val) < 0)
+        if (read_event_overlapped(event1_device_, (BYTE *)&val, 1, -1) < 0)
         {
             break;
         }
@@ -298,7 +359,7 @@ int VideoCard::outputStep()
 
     // 等待板卡event0（表示MM2S可继续/空闲）
     BYTE val = 0;
-    if (readDevice(event0_device_, 0, 1, (BYTE *)&val) < 0)
+    if (read_event_overlapped(event0_device_, (BYTE *)&val, 1, -1) < 0)
     {
         return -1;
     }
@@ -337,7 +398,7 @@ void VideoCard::h2cEventThread()
             break;
         }
         BYTE val;
-        readDevice(event0_device_, 0, 1, (BYTE *)&val);
+        read_event_overlapped(event0_device_, (BYTE *)&val, 1, -1);
         writeUser(MM2S_VDMA_BASE + VDMA_MM2S_SR, 0xffffffff);
         // 这里原来是释放信号量
         if (write_worker_)
@@ -712,7 +773,9 @@ int VideoCard::openDevices()
     // verbose_msg("Device node: %s\n", EVENT0_NAME);
     //  open device file
     mbstowcs(device_path_w, device_path, sizeof(device_path));
-    event0_device_ = CreateFile(device_path_w, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    // Open event devices as OVERLAPPED so we can implement timeouts / cancellation.
+    event0_device_ = CreateFile(device_path_w, GENERIC_READ, 0, NULL, OPEN_EXISTING,
+                                FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
     if (event0_device_ == INVALID_HANDLE_VALUE)
     {
         fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
@@ -727,7 +790,8 @@ int VideoCard::openDevices()
     // verbose_msg("Device node: %s\n", EVENT1_NAME);
     //  open device file
     mbstowcs(device_path_w, device_path, sizeof(device_path));
-    event1_device_ = CreateFile(device_path_w, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    event1_device_ = CreateFile(device_path_w, GENERIC_READ, 0, NULL, OPEN_EXISTING,
+                                FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
     if (event1_device_ == INVALID_HANDLE_VALUE)
     {
         fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
@@ -762,7 +826,7 @@ int VideoCard::captureSingleShot()
 
     // 等一次 event（等 interrupt）
     BYTE val;
-    if (readDevice(event1_device_, 0, 1, (BYTE *)&val) < 0)
+    if (read_event_overlapped(event1_device_, (BYTE *)&val, 1, -1) < 0)
         return -1;
 
     // clear status

@@ -93,6 +93,20 @@ cap_result_t cap_capture_step(cap_handle_t h)
     return (r == 0) ? CAP_OK : CAP_E_INTERNAL;
 }
 
+cap_result_t cap_capture_step_timeout(cap_handle_t h, int timeout_ms)
+{
+    if (!h)
+        return CAP_E_INVALID;
+    auto *ctx = (CapCtx *)h;
+
+    const int r = ctx->card.captureStepTimeout(timeout_ms);
+    if (r == 0)
+        return CAP_OK;
+    if (r == 1)
+        return CAP_E_TIMEOUT;
+    return CAP_E_INTERNAL;
+}
+
 cap_result_t cap_stop_capture(cap_handle_t h)
 {
     if (!h)
