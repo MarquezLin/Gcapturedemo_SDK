@@ -1,4 +1,4 @@
-﻿// #include <QDebug>
+#include "cap_log_internal.h"
 #include "video_card.h"
 
 #include <SetupAPI.h>
@@ -116,7 +116,7 @@ int VideoCard::init(int w, int h)
     is_initialized_ = true;
     init_time();
     uint64_t t = now_us();
-    printf("[INIT  ] %llu us  Init done\n", t);
+    CAP_LOG(CAP_LOG_INFO, "[INIT  ] %llu us  Init done\n", t);
     return 0;
 }
 
@@ -246,7 +246,7 @@ void VideoCard::c2hDataThread()
         // 读取视频数据
         //  qDebug() << "start read dma";
         uint64_t t = now_us();
-        printf("[DATA  ] %llu us  start read dma\n", t);
+        CAP_LOG(CAP_LOG_INFO, "[DATA  ] %llu us  start read dma\n", t);
         auto ret = readDevice(c2h0_device_, c2h_fpga_ddr_addr_[c2h_fpga_ddr_addr_index_ % VIDEO_FRAME_STORE_NUM], image_bytes_count_, c2h_align_mem_);
         if (ret < 0)
         {
@@ -557,7 +557,7 @@ int VideoCard::getDevices(GUID guid, char *devpath, size_t len_devpath)
     device_info = SetupDiGetClassDevs((LPGUID)&guid, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
     if (device_info == INVALID_HANDLE_VALUE)
     {
-        fprintf(stderr, "GetDevices INVALID_HANDLE_VALUE\n");
+        CAP_LOG(CAP_LOG_ERR, "GetDevices INVALID_HANDLE_VALUE\n");
         return -1;
     }
 
@@ -571,7 +571,7 @@ int VideoCard::getDevices(GUID guid, char *devpath, size_t len_devpath)
         ULONG detailLength = 0;
         if (!SetupDiGetDeviceInterfaceDetail(device_info, &device_interface, NULL, 0, &detailLength, NULL) && GetLastError() != ERROR_INSUFFICIENT_BUFFER)
         {
-            fprintf(stderr, "SetupDiGetDeviceInterfaceDetail - get length failed\n");
+            CAP_LOG(CAP_LOG_ERR, "SetupDiGetDeviceInterfaceDetail - get length failed\n");
             break;
         }
 
@@ -579,7 +579,7 @@ int VideoCard::getDevices(GUID guid, char *devpath, size_t len_devpath)
         dev_detail = (PSP_DEVICE_INTERFACE_DETAIL_DATA)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, detailLength);
         if (!dev_detail)
         {
-            fprintf(stderr, "HeapAlloc failed\n");
+            CAP_LOG(CAP_LOG_ERR, "HeapAlloc failed\n");
             break;
         }
         dev_detail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
@@ -587,7 +587,7 @@ int VideoCard::getDevices(GUID guid, char *devpath, size_t len_devpath)
         // get device interface detail
         if (!SetupDiGetDeviceInterfaceDetail(device_info, &device_interface, dev_detail, detailLength, NULL, NULL))
         {
-            fprintf(stderr, "SetupDiGetDeviceInterfaceDetail - get detail failed\n");
+            CAP_LOG(CAP_LOG_ERR, "SetupDiGetDeviceInterfaceDetail - get detail failed\n");
             HeapFree(GetProcessHeap(), 0, dev_detail);
             break;
         }
@@ -652,7 +652,7 @@ int VideoCard::openDevices()
     //    //verbose_msg("Devices found: %d\n", num_devices);
     if (num_devices < 1)
     {
-        printf("error\n");
+        CAP_LOG(CAP_LOG_INFO, "error\n");
     }
     // extend device path to include target device node (xdma_control, xdma_user etc)
     //    //verbose_msg("Device base path: %s\n", device_base_path);
@@ -667,7 +667,7 @@ int VideoCard::openDevices()
     {
         // fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
         DWORD err = GetLastError();
-        printf("Error opening device, win32 error code: %lu\n", err);
+        CAP_LOG(CAP_LOG_INFO, "Error opening device, win32 error code: %lu\n", err);
         if (err == ERROR_FILE_NOT_FOUND)
         {
             return -2; // device not found
@@ -686,7 +686,7 @@ int VideoCard::openDevices()
     if (h2c0_device_ == INVALID_HANDLE_VALUE)
     {
         fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
-        printf("Invalid handle, skip IO.\n");
+        CAP_LOG(CAP_LOG_INFO, "Invalid handle, skip IO.\n");
         return -1;
         //
     }
@@ -701,7 +701,7 @@ int VideoCard::openDevices()
     if (user_device_ == INVALID_HANDLE_VALUE)
     {
         fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
-        printf("Invalid handle, skip IO.\n");
+        CAP_LOG(CAP_LOG_INFO, "Invalid handle, skip IO.\n");
         return -1;
         //
     }
@@ -716,7 +716,7 @@ int VideoCard::openDevices()
     if (event0_device_ == INVALID_HANDLE_VALUE)
     {
         fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
-        printf("Invalid handle, skip IO.\n");
+        CAP_LOG(CAP_LOG_INFO, "Invalid handle, skip IO.\n");
         return -1;
         //
     }
@@ -731,7 +731,7 @@ int VideoCard::openDevices()
     if (event1_device_ == INVALID_HANDLE_VALUE)
     {
         fprintf(stderr, "Error opening device, win32 error code: %ld\n", GetLastError());
-        printf("Invalid handle, skip IO.\n");
+        CAP_LOG(CAP_LOG_INFO, "Invalid handle, skip IO.\n");
         return -1;
         //
     }

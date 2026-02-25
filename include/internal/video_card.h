@@ -47,6 +47,12 @@ public:
     int captureStep();
 
     /*
+     * @fun：连续采集模式下，抓取下一帧（最多等待timeout_ms毫秒）。
+     * @return 0：成功，1：超时(无新帧)，其他：失败
+     */
+    int captureStepTimeout(int timeout_ms);
+
+    /*
      * @fun：停止采集
      */
     void stopCapture();

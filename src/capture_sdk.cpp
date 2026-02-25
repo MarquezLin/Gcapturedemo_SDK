@@ -1,3 +1,4 @@
+#include "cap_log_internal.h"
 #include "capture_sdk.h"
 #include "internal/video_card.h"
 #include <new>
@@ -67,7 +68,7 @@ cap_result_t cap_start_capture(cap_handle_t h, cap_mode_t mode, cap_video_cb_t c
         return CAP_E_INVALID;
     auto *ctx = (CapCtx *)h;
     dbgprintf("[cap] mode=%d, h=%p, cb=%p\n", mode, h, cb);
-    printf("[cap] mode=%d, h=%p, cb=%p\n", mode, h, cb);
+    CAP_LOG(CAP_LOG_INFO, "[cap] mode=%d, h=%p, cb=%p\n", mode, h, cb);
 
 
     int r = ctx->card.startCapture((mode == CAP_MODE_SINGLE)
@@ -77,7 +78,7 @@ cap_result_t cap_start_capture(cap_handle_t h, cap_mode_t mode, cap_video_cb_t c
                                    {
         cb((const uint8_t*)data, w, hh, 3, user); });
 
-    printf("[cap] mode=%d, h=%p, cb=%p\n", mode, h, cb);
+    CAP_LOG(CAP_LOG_INFO, "[cap] mode=%d, h=%p, cb=%p\n", mode, h, cb);
     return (r == 0) ? CAP_OK : CAP_E_INTERNAL;
 }
 
